@@ -1,0 +1,38 @@
+# Тестовое окружение: docker compose -f docker-compose.dev.yml up --build
+# Открыть http://localhost:3002 — правки в src/ и public/ применяются на лету.
+name: vpnchr
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: node
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-alpine}
+    restart: unless-stopped
+    environment:
+      # Боевой SHM: сервер Next ходит в прод по API
+      SHM_URL: https://api.vpnchr.com
+      CONFIG_KEY: remna
+      # Короткий кэш, чтобы правки конфига и прайса в SHM были видны сразу
+      CONFIG_TTL: 10
+      # Отслеживание изменений файлов из тома на macOS/Windows
+      WATCHPACK_POLLING: "true"
+    expose:
+      - "3000"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./scripts:/app/scripts
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: nginx
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    depends_on:
+      - web

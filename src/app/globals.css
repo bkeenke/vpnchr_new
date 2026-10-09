@@ -1,26 +1,100 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Дизайн-токены VPNCHR: тёмный фон, неоново-зелёный акцент, хром. */
+@theme {
+  --color-bg: #050807;
+  --color-bg-2: #0a120f;
+  --color-surface: rgb(12 22 18 / 0.72);
+  --color-surface-strong: #0d1814;
+  --color-line: rgb(255 255 255 / 0.1);
+  --color-line-green: rgb(40 245 154 / 0.35);
+  --color-green: #22e58c;
+  --color-green-bright: #5dffb4;
+  --color-green-deep: #0c7a4a;
+  --color-text: #f2f6f4;
+  --color-muted: #97a69f;
+  --color-danger: #ff5c6c;
+  --color-warning: #ffb547;
+  --color-info: #5cc8ff;
+
+  --font-sans: var(--font-montserrat), system-ui, sans-serif;
+  --font-display: var(--font-unbounded), var(--font-montserrat), sans-serif;
+  --font-script: var(--font-marck), cursive;
+
+  --shadow-glow: 0 0 0 1px rgb(40 245 154 / 0.55), 0 0 24px rgb(40 245 154 / 0.35), inset 0 0 18px rgb(40 245 154 / 0.12);
+  --shadow-card: 0 24px 60px rgb(0 0 0 / 0.45);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Хромированный текст как у логотипа */
+.text-chrome {
+  background: linear-gradient(180deg, #ffffff 0%, #e4e9ec 38%, #8d969c 52%, #f4f7f8 70%, #aab2b7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgb(0 0 0 / 0.35)) drop-shadow(0 10px 24px rgb(0 0 0 / 0.45));
+}
+
+.text-emerald {
+  background: linear-gradient(180deg, #8dffc9 0%, #22e58c 45%, #0a9a5a 62%, #3dfaa2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgb(0 0 0 / 0.35)) drop-shadow(0 0 22px rgb(34 229 140 / 0.45));
+}
+
+/* Стеклянная карточка */
+.glass {
+  background: linear-gradient(160deg, rgb(20 34 28 / 0.78), rgb(6 12 10 / 0.82));
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-green {
+  background: linear-gradient(160deg, rgb(14 44 32 / 0.8), rgb(4 14 10 / 0.86));
+  border: 1px solid var(--color-line-green);
+  box-shadow: var(--shadow-glow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Неоновая обводка кнопок и иконок */
+.neon-ring {
+  border: 1.5px solid var(--color-green);
+  box-shadow:
+    0 0 14px rgb(34 229 140 / 0.45),
+    inset 0 0 12px rgb(34 229 140 / 0.18);
+}
+
+.tracking-hero {
+  letter-spacing: 0.42em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-rise {
+    animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-green);
+  outline-offset: 2px;
 }
