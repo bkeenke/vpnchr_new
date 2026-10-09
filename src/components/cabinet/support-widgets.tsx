@@ -18,7 +18,8 @@ export function SupportWidgets() {
           id="__support_widget__"
           src={widgets.supportWidgetUrl}
           strategy="afterInteractive"
-          data-api={widgets.supportWidgetApi}
+          // Корень API без /widget — виджет сам дописывает /widget/session; пусто — берёт адрес скрипта
+          data-api={widgets.supportWidgetApi.replace(/\/+$/, '') || undefined}
           data-user-id={String(user.user_id)}
           data-color-primary="#22e58c"
           data-lang="ru"

@@ -12,6 +12,8 @@ const nextConfig: NextConfig = {
   // Самодостаточная сборка для Docker (node server.js без node_modules)
   output: 'standalone',
   poweredByHeader: false,
+  // Только для next dev: открывать стенд с телефона по IP локальной сети (по умолчанию разрешён лишь localhost)
+  allowedDevOrigins: ['192.168.*.*', '10.*.*.*', '172.*.*.*', '127.0.0.1', '0.0.0.0', '*.local'],
   images: { formats: ['image/avif', 'image/webp'] },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];

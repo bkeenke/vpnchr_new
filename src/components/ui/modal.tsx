@@ -21,9 +21,9 @@ export function Modal({ open, onOpenChange, title, description, children, size =
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=open]:animate-[fade_.15s_ease-out]" />
         <Dialog.Content
           className={cn(
-            'glass shadow-card fixed z-50 flex max-h-[92svh] flex-col overflow-hidden bg-[#07100c]/95 outline-none',
-            // мобильный — лист снизу, десктоп — по центру
-            'inset-x-0 bottom-0 rounded-t-3xl sm:inset-auto sm:top-1/2 sm:left-1/2 sm:w-[calc(100%-2rem)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl',
+            'glass shadow-card fixed z-50 flex max-h-[calc(100svh-2rem)] flex-col overflow-hidden bg-[#07100c]/95 outline-none',
+            // По центру экрана на любой ширине, с отступом 1rem от краёв
+            'top-1/2 left-1/2 w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-3xl',
             size === 'sm' && 'sm:max-w-md',
             size === 'md' && 'sm:max-w-lg',
             size === 'lg' && 'sm:max-w-2xl',
@@ -42,7 +42,7 @@ export function Modal({ open, onOpenChange, title, description, children, size =
               <IconX className="size-5" />
             </Dialog.Close>
           </div>
-          <div className="overflow-y-auto px-5 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6">{children}</div>
+          <div className="overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

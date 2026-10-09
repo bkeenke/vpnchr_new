@@ -5,3 +5,4 @@ scripts
 *.md
 .env*
 !.env.example
+build.sh

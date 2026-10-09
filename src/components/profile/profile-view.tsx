@@ -27,10 +27,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ConfirmModal, Modal } from '@/components/ui/modal';
-import { TelegramWidget } from '@/components/auth/telegram-widget';
 import { PayModal } from '@/components/cabinet/pay-modal';
 import { PromoModal } from './promo-modal';
 import { SecuritySettings } from './security';
+import { copyOrToast } from '@/lib/clipboard';
 
 function encodePartnerId(id: number) {
   return btoa(String(id)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -41,7 +41,7 @@ function useCopy() {
   return {
     copied,
     copy: async (key: string, value: string) => {
-      await navigator.clipboard.writeText(value);
+      if (!(await copyOrToast(value))) return;
       setCopied(key);
       setTimeout(() => setCopied(null), 1200);
     },
@@ -313,16 +313,6 @@ function TelegramCard({ user, username }: { user: User; username: string | null 
     }, 1000);
   }
 
-  async function bindWidget(tgUser: Parameters<Parameters<typeof TelegramWidget>[0]['onAuth']>[0]) {
-    try {
-      await api.post('/telegram/web/auth', { ...tgUser, profile: cfg.telegram.botProfile, bind_to_profile: 1, uid: user.user_id });
-      toast.success('Telegram привязан');
-      router.refresh();
-    } catch {
-      toast.error('Не удалось привязать Telegram');
-    }
-  }
-
   async function unbind() {
     setBusy(true);
     try {
@@ -354,13 +344,11 @@ function TelegramCard({ user, username }: { user: User; username: string | null 
       ) : (
         <div className="space-y-3">
           <p className="text-muted text-sm">Привяжите Telegram, чтобы входить в один клик и получать уведомления.</p>
-          {cfg.telegram.oidcAuth ? (
+          {cfg.telegram.oidcAuth && (
             <Button size="sm" onClick={bindOidc}>
               <IconBrandTelegram className="size-4" /> Привязать Telegram
             </Button>
-          ) : cfg.telegram.widgetAuth ? (
-            <TelegramWidget botName={cfg.telegram.botName} onAuth={bindWidget} />
-          ) : null}
+          )}
         </div>
       )}
 

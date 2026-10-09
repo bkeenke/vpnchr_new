@@ -5,7 +5,7 @@ Next.js 16 (App Router, SSR) + Tailwind CSS 4. Клиент для [SHM](https:/
 ## Возможности
 
 - **Главная** по макету: hero, преимущества, «Работает с», шаги подключения, тарифы из публичного прайса SHM (`/shm/v1/public/price_list`).
-- **Вход**: логин/пароль, 2FA (TOTP), регистрация с капчей и согласием с документами, сброс пароля по ссылке, Passkey, Telegram (виджет, OIDC, WebApp с автовходом), реферальные ссылки `?partner_id=`.
+- **Вход**: логин/пароль, 2FA (TOTP), регистрация с капчей и согласием с документами, сброс пароля по ссылке, Passkey, Telegram (OIDC, WebApp с автовходом), реферальные ссылки `?partner_id=`.
 - **Услуги**: список по категориям, подключение (ссылка подписки, QR, «Добавить в приложение» по URL-схеме, Happ cryptolink, конфиг WireGuard), заказ с пополнением, смена тарифа, остановка, удаление, оплата неоплаченных, автообновление статусов.
 - **Профиль**: баланс, пополнение, автоплатежи, промокод, прогноз оплаты, личные данные, email с подтверждением, партнёрская ссылка, привязка Telegram, безопасность (пароль, 2FA с резервными кодами, Passkey, отключение входа по паролю).
 - **Платежи и списания**: серверная пагинация и сортировка (состояние в URL).
@@ -49,20 +49,36 @@ CONFIG_KEY=remna
 
 Сервер Next.js запрашивает `{SHM_URL}/shm/v1/public/get_config?key={CONFIG_KEY}`, кэширует ответ на `CONFIG_TTL` секунд (по умолчанию 60) и обновляет его в фоне. Если SHM недоступен, работает последний удачный конфиг, а до первой загрузки — значения по умолчанию.
 
-Значение ключа в SHM — плоский JSON с теми же именами, что переменные окружения `shm-client-2`. Полный пример — [config.example.json](config.example.json):
+Значение ключа в SHM — JSON, разбитый на разделы. Полный пример со всеми ключами и значениями по умолчанию — [config.example.json](config.example.json):
+
+| Раздел | Что внутри |
+|---|---|
+| `app` | `name`, `description` — название и описание кабинета |
+| `contacts` | `support_link` (пункт «Поддержка» в меню), `email`, `phone` |
+| `legal` | ссылки на документы: `privacy_policy`, `terms_of_use`, `public_offer`, `user_agreement`, `return_policy` |
+| `auth` | `otp`, `passkey`, `passkey_auth_disabled`, `captcha`; `telegram`: `oidc`, `bot_profile`, `webapp`, `webapp_auto_auth`, `webapp_profile`, `allow_pin` |
+| `email` | `required`, `verify_required`, `allow_verify` |
+| `services` | `visible_categories`; `vpn` и `proxy`: `categories`, `title`, `storage_prefix`, `apps`; у `proxy` ещё `show_sub_link`, `show_qr`, `happ_cryptolink`, `add_button_text`; `actions`: `block`, `delete`, `change`, `change_force`, `change_all_categories`; `order`: `sorting`, `cost_discount`, `cost_with_bonuses`, `block_if_unpaid` |
+| `widgets` | `support`: `url`, `api`; `bitrix_script_url` |
+| `push` | `enabled`, `vapid_public_key` |
+
+Регистр имён не важен, флаги — `true`/`false` или строки `"true"`/`"false"`, списки — массив или строка через запятую. Изменения в SHM применяются без перезапуска, в пределах `CONFIG_TTL`. Старый плоский формат (`APP_NAME`, `PROXY_CATEGORY`… как в `shm-client-2`) тоже читается; если заданы оба, значения из разделов важнее.
+
+**Приложения** — `services.proxy.apps` (подписка) и `services.vpn.apps` (WireGuard): платформа → приложение → `name`, `url` (скачать), `deeplink` (префикс, к которому дописывается ссылка подписки; только у `proxy`). Платформы: `ios`, `android`, `windows`, `macos` (или `mac`), `linux`. Порядок приложений = порядок кнопок; если на платформе их несколько, в карточке услуги появится выбор приложения.
 
 ```json
-{
-  "APP_NAME": "VPNCHR",
-  "SUPPORT_LINK": "https://t.me/vpnchr_support",
-  "PROXY_CATEGORY": "vpn-remna",
-  "PROXY_APP_IOS_URL": "https://apps.apple.com/…",
-  "IOS_PROXY_URL_SCHEMA": "happ://add/",
-  "OTP_ENABLE": true
+"apps": {
+  "ios": {
+    "happ": { "name": "Happ", "url": "https://apps.apple.com/…/id6504287215", "deeplink": "happ://add/" },
+    "incy": { "name": "Incy", "url": "https://apps.apple.com/…/id6756943388", "deeplink": "incy://add/" }
+  },
+  "macos": {
+    "happ": { "name": "Happ", "url": "https://apps.apple.com/…/id6504287215", "deeplink": "happ://add/" }
+  }
 }
 ```
 
-Регистр ключей не важен, флаги — `true`/`false` или строки `"true"`/`"false"`, списки — массив или строка через запятую. Изменения в SHM применяются без перезапуска, в пределах `CONFIG_TTL`.
+Без `url` будет только кнопка «Добавить в …», без `deeplink` — только «Скачать …». `add_button_text` заменяет текст кнопки, только когда приложение одно.
 
 Прокси кабинета не пропускает `/api/public/get_config` из браузера. Сам эндпоинт SHM публичный, поэтому **не храните в этом конфиге секреты**.
 

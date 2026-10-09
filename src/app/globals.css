@@ -98,3 +98,29 @@ body {
   outline: 2px solid var(--color-green);
   outline-offset: 2px;
 }
+
+/* Кнопка виджета поддержки (support-bot) — над нижней панелью кабинета, пока она видна (до lg) */
+:root {
+  /* Высота нижней панели кабинета (components/cabinet/nav.tsx) без safe-area */
+  --cabinet-nav-h: 66px;
+}
+@media (max-width: 1023.98px) {
+  body:has(nav[aria-label='Кабинет']) #sw-btn {
+    bottom: calc(var(--cabinet-nav-h) + 16px + env(safe-area-inset-bottom));
+  }
+  body:has(nav[aria-label='Кабинет']) #sw-win {
+    bottom: calc(var(--cabinet-nav-h) + 92px + env(safe-area-inset-bottom));
+  }
+}
+/* На узких экранах окно чата виджета раскрывается на всю ширину — ставим его над панелью */
+@media (max-width: 420px) {
+  body:has(nav[aria-label='Кабинет']) #sw-win {
+    bottom: calc(var(--cabinet-nav-h) + 12px + env(safe-area-inset-bottom));
+    height: min(calc(100dvh - var(--cabinet-nav-h) - 96px), 560px);
+  }
+}
+
+/* Пока открыто модальное окно кабинета (Radix Dialog), кнопка виджета поддержки не перекрывает его */
+body:has([role='dialog'][data-state='open']) #sw-btn {
+  display: none;
+}

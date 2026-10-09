@@ -27,7 +27,7 @@ export function ServicesView({ services }: { services: UserService[] }) {
   const [refreshing, startRefresh] = useTransition();
   const { openEmail, openVerify } = useEmailModals();
 
-  const [selectedRef, setSelected] = useState<{ id: number; tab?: 'info' | 'config' } | null>(null);
+  const [selectedRef, setSelected] = useState<{ id: number } | null>(null);
   // Открыть заказ сразу: /services?order=1 (кнопка «Выбрать» на главной)
   const orderParam = Number(params.get('order')) || undefined;
   const [orderOpen, setOrderOpen] = useState(
@@ -74,7 +74,7 @@ export function ServicesView({ services }: { services: UserService[] }) {
     const find = (list: UserService[]): UserService | undefined =>
       list.map((s) => (s.user_service_id === selectedRef.id ? s : find(s.children ?? []))).find(Boolean);
     const service = find(services);
-    return service ? { service, tab: selectedRef.tab } : null;
+    return service ? { service } : null;
   }, [selectedRef, services]);
 
   function startOrder() {
@@ -132,7 +132,7 @@ export function ServicesView({ services }: { services: UserService[] }) {
                 <div className="space-y-3">
                   {list.slice((page - 1) * PER_PAGE, page * PER_PAGE).map((s) => (
                     <div key={s.user_service_id}>
-                      <ServiceCard service={s} connectable={cat === 'vpn' || cat === 'proxy'} onOpen={(tab) => setSelected({ id: s.user_service_id, tab })} />
+                      <ServiceCard service={s} connectable={cat === 'vpn' || cat === 'proxy'} onOpen={() => setSelected({ id: s.user_service_id })} />
                       {s.children && s.children.length > 0 && (
                         <div className="border-line mt-2 ml-5 space-y-2 border-l-2 pl-4">
                           {s.children.map((c) => (
@@ -167,12 +167,24 @@ export function ServicesView({ services }: { services: UserService[] }) {
         </div>
       )}
 
-      <Modal open={!!selected} onOpenChange={(o) => !o && setSelected(null)} title="Услуга" size="lg">
+      <Modal
+        open={!!selected}
+        onOpenChange={(o) => !o && setSelected(null)}
+        title={selected?.service.service.name || 'Услуга'}
+        description={
+          selected && (
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              #{selected.service.user_service_id} <StatusBadge status={selected.service.status} />
+              {selected.service.expire && <span>до {formatDate(selected.service.expire)}</span>}
+            </span>
+          )
+        }
+        size="lg"
+      >
         {selected && (
           <ServiceDetail
             key={selected.service.user_service_id}
             service={selected.service}
-            initialTab={selected.tab}
             onChanged={() => {
               setSelected(null);
               progressAttempts.current = 0;
@@ -221,17 +233,7 @@ export function ServicesView({ services }: { services: UserService[] }) {
   );
 }
 
-function ServiceCard({
-  service,
-  compact,
-  connectable,
-  onOpen,
-}: {
-  service: UserService;
-  compact?: boolean;
-  connectable?: boolean;
-  onOpen: (tab?: 'info' | 'config') => void;
-}) {
+function ServiceCard({ service, compact, connectable, onOpen }: { service: UserService; compact?: boolean; connectable?: boolean; onOpen: () => void }) {
   const active = service.status === 'ACTIVE';
   return (
     <div
@@ -241,7 +243,7 @@ function ServiceCard({
         'hover:border-line-green',
       )}
     >
-      <button type="button" onClick={() => onOpen(connectable && active ? 'config' : 'info')} className="flex min-w-0 flex-1 items-center gap-4 text-left">
+      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-4 text-left">
         {!compact && <ShieldMark className={cn('size-11 shrink-0', !active && 'opacity-40 grayscale')} />}
         <span className="min-w-0 flex-1">
           <span className={cn('block truncate font-semibold', compact ? 'text-sm' : 'text-base')}>{service.service.name}</span>
@@ -254,7 +256,7 @@ function ServiceCard({
         <StatusBadge status={service.status} />
       </button>
       {connectable && active ? (
-        <Button size="sm" className="hidden sm:inline-flex" onClick={() => onOpen('config')}>
+        <Button size="sm" className="hidden sm:inline-flex" onClick={onOpen}>
           <IconPlugConnected className="size-4" /> Подключить
         </Button>
       ) : (

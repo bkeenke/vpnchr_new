@@ -14,7 +14,6 @@ import {
   IconWallet,
 } from '@tabler/icons-react';
 import type { ForecastItem, PaySystem, UserService } from '@/lib/types';
-import type { Platform } from '@/lib/config';
 import { api, first, openLink } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { useClientValue } from '@/lib/hooks';
@@ -29,15 +28,14 @@ import { ConfirmModal } from '@/components/ui/modal';
 import { Input, Select } from '@/components/ui/input';
 import { QrModal } from './qr-modal';
 import { AppDownloads, detectPlatform } from './app-downloads';
+import { copyOrToast } from '@/lib/clipboard';
 
 export function ServiceDetail({
   service,
-  initialTab,
   onChanged,
   onChangeTariff,
 }: {
   service: UserService;
-  initialTab?: 'info' | 'config';
   onChanged: () => void;
   onChangeTariff: (s: UserService) => void;
 }) {
@@ -50,7 +48,6 @@ export function ServiceDetail({
   const isNotPaid = service.status === 'NOT PAID';
   const hasConnection = (isVpn || isProxy) && isActive;
 
-  const [tab, setTab] = useState<'info' | 'config'>(initialTab === 'config' && hasConnection ? 'config' : 'info');
   const [subUrl, setSubUrl] = useState<string | null>(null);
   const [wgConfig, setWgConfig] = useState<string | null>(null);
   const [connLoading, setConnLoading] = useState(hasConnection);
@@ -137,19 +134,41 @@ export function ServiceDetail({
 
   async function copySub() {
     if (!subUrl) return;
-    await navigator.clipboard.writeText(subUrl);
+    if (!(await copyOrToast(subUrl))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   }
 
   const platform = useClientValue(detectPlatform, '');
-  const urlSchema = isProxy && platform ? sc.proxyUrlSchemas[platform as Platform] : undefined;
+  // Несколько приложений для подписки (Happ, V2RayTun…) — пользователь выбирает одно, шаги показывают только его
+  // [id, название] приложений текущей платформы (или всех, если платформа не определена), без повторов
+  const appChoices = isProxy ? [...new Map(sc.proxyApps.filter((a) => !platform || a.platform === platform).map((a) => [a.id, a.name || a.id])).entries()] : [];
+  const [pickedApp, setPickedApp] = useState(() => {
+    try {
+      return localStorage.getItem(APP_CHOICE_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const chosenApp = appChoices.length > 1 ? (appChoices.some(([id]) => id === pickedApp) ? pickedApp : appChoices[0][0]) : '';
+  function pickApp(id: string) {
+    setPickedApp(id);
+    try {
+      localStorage.setItem(APP_CHOICE_KEY, id);
+    } catch {
+      /* без запоминания */
+    }
+  }
+  const proxyApps = chosenApp ? sc.proxyApps.filter((a) => a.id === chosenApp) : sc.proxyApps;
+  // Приложения с URL-схемой для текущей платформы — кнопка «Добавить в …»
+  const addApps = isProxy && platform ? proxyApps.filter((a) => a.platform === platform && a.schema) : [];
 
-  async function openInApp() {
+  /** Открыть подписку в приложении по его схеме; без схемы — просто ссылку подписки. */
+  async function openInApp(schema?: string) {
     if (!subUrl) return;
-    if (!urlSchema) return openLink(subUrl);
-    let link = `${urlSchema}${subUrl}`;
-    if (sc.showHappCryptoLink && urlSchema === 'happ://add/') {
+    if (!schema) return openLink(subUrl);
+    let link = `${schema}${subUrl}`;
+    if (sc.showHappCryptoLink && schema === 'happ://add/') {
       try {
         const r = await fetch('https://crypto.happ.su/api-v2.php', {
           method: 'POST',
@@ -165,40 +184,15 @@ export function ServiceDetail({
     openLink(link);
   }
 
-  const apps = isVpn ? sc.vpnApps : sc.proxyApps;
+  const apps = (isVpn ? sc.vpnApps : proxyApps).filter((a) => a.url);
+  // «Добавить в Happ» по названию приложения; DEVICE_CONFIG_TEXT заменяет текст, только когда выбирать не из чего
+  const addLabel = (name: string) => (appChoices.length <= 1 && sc.deviceConfigText) || (name ? `Добавить в ${name}` : 'Добавить в приложение');
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* Сведения об услуге — только когда подключать нечего (статус и срок уже в заголовке окна) */}
+      {!hasConnection && (
         <div>
-          <p className="text-muted text-xs">#{service.user_service_id}</p>
-          <p className="font-display text-xl font-bold">{service.service.name}</p>
-        </div>
-        <StatusBadge status={service.status} />
-      </div>
-
-      {hasConnection && (
-        <div className="border-line grid grid-cols-2 rounded-full border bg-black/30 p-1 text-sm font-semibold" role="tablist">
-          {(['config', 'info'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className={cn('rounded-full py-2 transition', tab === t ? 'neon-ring bg-green/10' : 'text-muted hover:text-text')}
-            >
-              {t === 'config' ? 'Подключение' : 'Информация'}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {tab === 'info' && (
-        <div>
-          <Row label="Статус">
-            <StatusBadge status={service.status} />
-          </Row>
           <Row label="Стоимость">{formatMoney(service.service.cost)}</Row>
           {service.expire && <Row label="Действует до">{formatDate(service.expire)}</Row>}
           {service.next && <Row label="Следующий тариф">{nextInfo ? `${nextInfo.name} — ${formatMoney(nextInfo.cost)}` : `#${service.next}`}</Row>}
@@ -215,47 +209,85 @@ export function ServiceDetail({
         </div>
       )}
 
-      {tab === 'config' && hasConnection && (
+      {hasConnection && (
         <div className="space-y-4">
           {connLoading ? (
             <p className="text-muted py-6 text-center text-sm">Загружаем данные подключения…</p>
           ) : !subUrl && !wgConfig ? (
             <p className="text-muted py-6 text-center text-sm">Данные подключения ещё готовятся. Обновите страницу через минуту.</p>
           ) : (
-            <ol className="space-y-5">
-              {apps.length > 0 && (
-                <Step n={1} title="Скачайте приложение">
-                  <AppDownloads apps={apps} />
-                </Step>
-              )}
-              <Step n={apps.length > 0 ? 2 : 1} title={isVpn ? 'Добавьте конфигурацию' : 'Добавьте подписку в приложение'}>
-                <div className="flex flex-wrap gap-2">
-                  {isProxy && (
-                    <Button onClick={openInApp}>
-                      <IconDeviceMobileCog className="size-5" /> {urlSchema ? sc.deviceConfigText || 'Добавить в приложение' : 'Открыть подписку'}
-                    </Button>
-                  )}
-                  {(isVpn || sc.showProxyQr) && (
-                    <Button variant="ghost" onClick={() => setQrOpen(true)}>
-                      <IconQrcode className="size-5" /> QR-код
-                    </Button>
-                  )}
-                  {isVpn && (
-                    <Button variant="ghost" onClick={downloadConfig}>
-                      <IconDownload className="size-5" /> Скачать конфиг
-                    </Button>
-                  )}
-                </div>
-                {isProxy && sc.showProxySubLink && subUrl && (
-                  <div className="border-line mt-3 flex items-center gap-2 rounded-xl border bg-black/30 p-2 pl-3">
-                    <code className="text-muted min-w-0 flex-1 truncate font-mono text-xs">{subUrl}</code>
-                    <Button variant="subtle" size="icon" onClick={copySub} aria-label="Скопировать ссылку">
-                      {copied ? <IconCheck className="text-green size-5" /> : <IconCopy className="size-5" />}
-                    </Button>
+            <>
+              {appChoices.length > 1 && (
+                <div>
+                  <p className="text-muted mb-2 text-sm">Выберите приложение</p>
+                  <div
+                    className="border-line flex flex-wrap gap-1 rounded-2xl border bg-black/30 p-1 text-sm font-semibold"
+                    role="radiogroup"
+                    aria-label="Приложение"
+                  >
+                    {appChoices.map(([id, name]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={chosenApp === id}
+                        onClick={() => pickApp(id)}
+                        className={cn(
+                          'flex-1 rounded-xl px-3 py-2 whitespace-nowrap transition',
+                          chosenApp === id ? 'neon-ring bg-green/10' : 'text-muted hover:text-text',
+                        )}
+                      >
+                        {name}
+                      </button>
+                    ))}
                   </div>
+                </div>
+              )}
+              <ol className="space-y-5">
+                {apps.length > 0 && (
+                  <Step n={1} title="Скачайте приложение">
+                    <AppDownloads apps={apps} />
+                  </Step>
                 )}
-              </Step>
-            </ol>
+                <Step n={apps.length > 0 ? 2 : 1} title={isVpn ? 'Добавьте конфигурацию' : 'Добавьте подписку в приложение'}>
+                  <div className="flex flex-wrap gap-2">
+                    {isProxy &&
+                      (addApps.length ? (
+                        addApps.map((a, i) => (
+                          <Button key={i} variant={i === 0 ? undefined : 'ghost'} onClick={() => openInApp(a.schema)}>
+                            <IconDeviceMobileCog className="size-5" /> {addLabel(a.name)}
+                          </Button>
+                        ))
+                      ) : (
+                        <Button onClick={() => openInApp()}>
+                          <IconDeviceMobileCog className="size-5" /> Открыть подписку
+                        </Button>
+                      ))}
+                    {(isVpn || sc.showProxyQr) && (
+                      <Button variant="ghost" onClick={() => setQrOpen(true)}>
+                        <IconQrcode className="size-5" /> QR-код
+                      </Button>
+                    )}
+                    {isVpn && (
+                      <Button variant="ghost" onClick={downloadConfig}>
+                        <IconDownload className="size-5" /> Скачать конфиг
+                      </Button>
+                    )}
+                  </div>
+                </Step>
+                {isProxy && sc.showProxySubLink && subUrl && (
+                  <Step n={apps.length > 0 ? 3 : 2} title="Ссылка на подписку (ваш ключ)">
+                    <p className="text-muted mb-3 text-sm">Если приложение не открылось само, скопируйте ссылку и добавьте её в приложении вручную.</p>
+                    <div className="border-line flex items-center gap-2 rounded-xl border bg-black/30 p-2 pl-3">
+                      <code className="text-muted min-w-0 flex-1 truncate font-mono text-xs">{subUrl}</code>
+                      <Button variant="subtle" size="icon" onClick={copySub} aria-label="Скопировать ссылку">
+                        {copied ? <IconCheck className="text-green size-5" /> : <IconCopy className="size-5" />}
+                      </Button>
+                    </div>
+                  </Step>
+                )}
+              </ol>
+            </>
           )}
           <QrModal
             open={qrOpen}
@@ -304,6 +336,9 @@ export function ServiceDetail({
     </div>
   );
 }
+
+/** Выбранное приложение для подписки — запоминается в браузере. */
+const APP_CHOICE_KEY = 'vpnchr:proxy-app';
 
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (

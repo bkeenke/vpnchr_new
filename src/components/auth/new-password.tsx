@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { IconEye, IconEyeOff, IconWand } from '@tabler/icons-react';
 import { toast } from '@/lib/toast';
 import { Input } from '@/components/ui/input';
+import { copyText } from '@/lib/clipboard';
 
 const ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*-_';
 const GROUPS = [/[a-z]/, /[A-Z]/, /\d/, /[^a-zA-Z\d]/];
@@ -40,12 +41,8 @@ export function NewPasswordFields({ password, confirm, onChange, errors, label =
     const value = generatePassword();
     onChange({ password: value, confirm: value });
     setVisible(true);
-    try {
-      await navigator.clipboard.writeText(value);
-      toast.success('Пароль сгенерирован и скопирован');
-    } catch {
-      toast.success('Пароль сгенерирован — сохраните его');
-    }
+    if (await copyText(value)) toast.success('Пароль сгенерирован и скопирован');
+    else toast.success('Пароль сгенерирован — сохраните его');
   }
 
   return (

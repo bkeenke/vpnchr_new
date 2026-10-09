@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ConfirmModal, Modal } from '@/components/ui/modal';
 import { NewPasswordFields } from '@/components/auth/new-password';
+import { copyOrToast } from '@/lib/clipboard';
 
 type Tab = 'password' | 'otp' | 'passkey' | 'passwordAuth';
 
@@ -281,7 +282,7 @@ function OtpSettings() {
                 size="icon"
                 aria-label="Скопировать ключ"
                 onClick={async () => {
-                  await navigator.clipboard.writeText(setup.secret);
+                  if (!(await copyOrToast(setup.secret))) return;
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1200);
                 }}
@@ -318,8 +319,7 @@ function OtpSettings() {
               variant="ghost"
               block
               onClick={async () => {
-                await navigator.clipboard.writeText(backup.join('\n'));
-                toast.success('Коды скопированы');
+                if (await copyOrToast(backup.join('\n'))) toast.success('Коды скопированы');
               }}
             >
               <IconCopy className="size-5" /> Скопировать коды

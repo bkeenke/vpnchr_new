@@ -33,10 +33,13 @@ const columns: Column<Withdrawal>[] = [
 
 export default async function WithdrawalsPage({ searchParams }: PageProps<'/withdrawals'>) {
   const { page, sort, dir } = parseHistoryParams(await searchParams, ['withdraw_date', 'end_date', 'total']);
-  const { items, total } = await getHistory<Withdrawal>('/user/withdraw', { page, perPage: PER_PAGE, sort, dir, filter: { total: { '!=': 0 } } }).catch(() => ({
-    items: [],
-    total: 0,
-  }));
+  // Нулевые списания (бесплатные услуги) не показываем — как в shm-client-2
+  const { items, total, failed } = await getHistory<Withdrawal>('/user/withdraw', { page, perPage: PER_PAGE, sort, dir, filter: { total: { '!=': 0 } } })
+    .then((r) => ({ ...r, failed: false }))
+    .catch((e) => {
+      console.error('[withdraw] не удалось загрузить историю из SHM:', e instanceof Error ? e.message : e);
+      return { items: [] as Withdrawal[], total: 0, failed: true };
+    });
 
   return (
     <>
@@ -50,7 +53,7 @@ export default async function WithdrawalsPage({ searchParams }: PageProps<'/with
         totalPages={Math.ceil(total / PER_PAGE)}
         sort={sort}
         dir={dir}
-        empty="Списаний пока нет"
+        empty={failed ? 'Не удалось загрузить историю. Обновите страницу' : 'Списаний пока нет'}
       />
     </>
   );

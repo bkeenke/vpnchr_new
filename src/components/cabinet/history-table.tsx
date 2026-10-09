@@ -32,7 +32,8 @@ export function HistoryTable<T>({ basePath, rows, rowKey, columns, page, totalPa
     <>
       <div className="glass overflow-hidden rounded-2xl">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
+          {/* Широкие таблицы (списания) листаются вбок, две колонки (платежи) помещаются на телефоне целиком */}
+          <table className={cn('w-full text-sm', columns.length > 2 && 'min-w-[520px]')}>
             <thead>
               <tr className="border-line text-muted border-b text-left text-xs tracking-wider uppercase">
                 {columns.map((c) => {
@@ -42,7 +43,7 @@ export function HistoryTable<T>({ basePath, rows, rowKey, columns, page, totalPa
                   return (
                     <th
                       key={c.key}
-                      className={cn('px-5 py-3.5 font-semibold', c.align === 'right' && 'text-right')}
+                      className={cn('px-4 py-3.5 font-semibold sm:px-5', c.align === 'right' && 'text-right')}
                       aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
                     >
                       {c.sortKey ? (
@@ -65,7 +66,7 @@ export function HistoryTable<T>({ basePath, rows, rowKey, columns, page, totalPa
               {rows.map((r) => (
                 <tr key={rowKey(r)} className="border-line/60 border-b last:border-0 hover:bg-white/[.02]">
                   {columns.map((c) => (
-                    <td key={c.key} className={cn('px-5 py-3.5', c.align === 'right' && 'text-right tabular-nums')}>
+                    <td key={c.key} className={cn('px-4 py-3.5 sm:px-5', c.align === 'right' && 'text-right tabular-nums')}>
                       {c.render(r)}
                     </td>
                   ))}

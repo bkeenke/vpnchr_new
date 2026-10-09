@@ -3,7 +3,7 @@
 import { useClientValue } from '@/lib/hooks';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { IconChevronDown, IconDownload } from '@tabler/icons-react';
-import type { Platform } from '@/lib/config';
+import type { App, Platform } from '@/lib/config';
 import { openLink } from '@/lib/api';
 import { PLATFORM_ICONS } from '@/components/brand/icons';
 import { Button } from '@/components/ui/button';
@@ -18,23 +18,27 @@ export function detectPlatform(): Platform | '' {
   return '';
 }
 
-type App = { platform: Platform; url: string; name: string };
-
-/** Кнопка приложения для текущей платформы + меню остальных. */
-export function AppDownloads({ apps }: { apps: App[] }) {
+/** Кнопки приложений текущей платформы (их может быть несколько) + меню остальных. */
+export function AppDownloads({ apps: all }: { apps: App[] }) {
   const platform = useClientValue(detectPlatform, '');
+  const apps = all.filter((a) => a.url);
   if (!apps.length) return null;
 
-  const primary = apps.find((a) => a.platform === platform) ?? apps[0];
-  const others = apps.filter((a) => a !== primary);
-  const Icon = PLATFORM_ICONS[primary.platform].icon;
+  const current = apps.filter((a) => a.platform === platform);
+  const primary = current.length ? current : apps.filter((a) => a.platform === apps[0].platform);
+  const others = apps.filter((a) => !primary.includes(a));
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button onClick={() => openLink(primary.url)}>
-        <Icon className="size-5" /> {primary.name || `Скачать для ${PLATFORM_ICONS[primary.platform].label}`}
-        <IconDownload className="size-4 opacity-70" />
-      </Button>
+      {primary.map((a, i) => {
+        const Icon = PLATFORM_ICONS[a.platform].icon;
+        return (
+          <Button key={i} variant={i === 0 ? undefined : 'ghost'} onClick={() => openLink(a.url)}>
+            <Icon className="size-5" /> {a.name ? `Скачать ${a.name}` : `Скачать для ${PLATFORM_ICONS[a.platform].label}`}
+            <IconDownload className="size-4 opacity-70" />
+          </Button>
+        );
+      })}
       {others.length > 0 && (
         <Menu.Root>
           <Menu.Trigger asChild>
@@ -43,13 +47,14 @@ export function AppDownloads({ apps }: { apps: App[] }) {
             </Button>
           </Menu.Trigger>
           <Menu.Portal>
-            <Menu.Content align="end" sideOffset={6} className="glass shadow-card z-[60] min-w-52 rounded-2xl bg-[#07100c]/95 p-1.5">
+            {/* Сплошной фон: .glass полупрозрачный и поверх модалки сливается с её содержимым */}
+            <Menu.Content align="end" sideOffset={6} className="border-line shadow-card z-[60] min-w-52 rounded-2xl border bg-[#0a1410] p-1.5">
               <Menu.Label className="text-muted px-3 py-1.5 text-xs">Другие платформы</Menu.Label>
-              {others.map((a) => {
+              {others.map((a, i) => {
                 const I = PLATFORM_ICONS[a.platform].icon;
                 return (
                   <Menu.Item
-                    key={a.platform}
+                    key={`${a.platform}:${i}`}
                     onSelect={() => openLink(a.url)}
                     className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm outline-none data-[highlighted]:bg-white/5"
                   >

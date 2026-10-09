@@ -10,15 +10,14 @@ const PER_PAGE = 10;
 
 const columns: Column<Payment>[] = [
   { key: 'date', title: 'Дата', sortKey: 'date', render: (p) => formatDate(p.date) },
-  { key: 'system', title: 'Способ оплаты', render: (p) => p.pay_system_id || '—' },
   {
     key: 'money',
     title: 'Сумма',
     sortKey: 'money',
     align: 'right',
     render: (p) => (
-      <span className={p.money > 0 ? 'text-green font-semibold' : 'text-danger font-semibold'}>
-        {p.money > 0 ? '+' : ''}
+      <span className={Number(p.money) > 0 ? 'text-green font-semibold' : 'text-danger font-semibold'}>
+        {Number(p.money) > 0 ? '+' : ''}
         {formatMoney(p.money)}
       </span>
     ),
@@ -27,24 +26,27 @@ const columns: Column<Payment>[] = [
 
 export default async function PaymentsPage({ searchParams }: PageProps<'/payments'>) {
   const { page, sort, dir } = parseHistoryParams(await searchParams, ['date', 'money']);
-  const { items, total } = await getHistory<Payment>('/user/pay', { page, perPage: PER_PAGE, sort, dir, filter: { money: { '>': 0 } } }).catch(() => ({
-    items: [],
-    total: 0,
-  }));
+  const { items, total, failed } = await getHistory<Payment>('/user/pay', { page, perPage: PER_PAGE, sort, dir, filter: { money: { '>': 0 } } })
+    .then((r) => ({ ...r, failed: false }))
+    .catch((e) => {
+      console.error('[pay] не удалось загрузить историю из SHM:', e instanceof Error ? e.message : e);
+      return { items: [], total: 0, failed: true };
+    });
 
   return (
     <>
       <PageTitle title="История платежей" eyebrow="Личный кабинет" />
       <HistoryTable
         basePath="/payments"
-        rows={items}
+        // Нули отсекает и фильтр SHM, но money может прийти строкой «0.00» — страхуемся
+        rows={items.filter((p) => Number(p.money) !== 0)}
         rowKey={(p) => p.id}
         columns={columns}
         page={page}
         totalPages={Math.ceil(total / PER_PAGE)}
         sort={sort}
         dir={dir}
-        empty="Платежей пока нет"
+        empty={failed ? 'Не удалось загрузить историю. Обновите страницу' : 'Платежей пока нет'}
       />
     </>
   );

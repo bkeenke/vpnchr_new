@@ -7,14 +7,13 @@ import { api, ApiError, first } from '@/lib/api';
 import { shmMessage } from '@/lib/shm-messages';
 import { toast } from '@/lib/toast';
 import { b64urlToBuffer, bufferToB64url } from '@/lib/webauthn';
-import { getTelegramWebApp, type TelegramUser } from '@/lib/telegram';
+import { getTelegramWebApp } from '@/lib/telegram';
 import { useClientValue } from '@/lib/hooks';
 import { safeNext } from '@/lib/utils';
 import { useConfig } from '@/components/providers/config';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Input } from '@/components/ui/input';
 import { NewPasswordFields } from './new-password';
-import { TelegramWidget } from './telegram-widget';
 
 type View = 'login' | 'register' | 'otp' | 'reset' | 'newPassword';
 
@@ -28,6 +27,14 @@ const LEGAL_LABELS: Record<string, string> = {
 
 function isEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+/** SHM отдаёт SVG капчи голым base64 (без data:-префикса); на всякий случай принимаем и data-URL, и сырой <svg>. */
+function captchaSrc(image: string) {
+  const v = image.trim();
+  if (v.startsWith('data:')) return v;
+  if (v.startsWith('<')) return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(v)}`;
+  return `data:image/svg+xml;base64,${v}`;
 }
 
 export function LoginForm() {
@@ -216,17 +223,6 @@ export function LoginForm() {
   }
 
   // ── Telegram
-  async function doTelegramWidget(user: TelegramUser) {
-    setLoading(true);
-    try {
-      await api.post('/telegram/web/auth', { ...user, profile: cfg.telegram.botProfile, register_if_not_exists: 1 });
-      done();
-    } catch {
-      toast.error('Не удалось войти через Telegram');
-      setLoading(false);
-    }
-  }
-
   function doTelegramOidc() {
     const q = new URLSearchParams({
       profile: cfg.telegram.botProfile,
@@ -265,10 +261,9 @@ export function LoginForm() {
   }, [inTelegram, cfg.telegram, doTelegramWebApp]);
 
   const showTelegramWebApp = inTelegram && cfg.telegram.webAppAuth;
-  const showTelegramWidget = !inTelegram && cfg.telegram.widgetAuth;
   const showTelegramOidc = !inTelegram && cfg.telegram.oidcAuth;
   const showPasskey = cfg.security.passkey && !cfg.security.passkeyAuthDisabled && supportsPasskey;
-  const hasAlt = showTelegramWebApp || showTelegramWidget || showTelegramOidc || showPasskey;
+  const hasAlt = showTelegramWebApp || showTelegramOidc || showPasskey;
 
   const title = { login: 'Вход', register: 'Регистрация', otp: 'Подтверждение', reset: 'Сброс пароля', newPassword: 'Новый пароль' }[view];
 
@@ -343,20 +338,36 @@ export function LoginForm() {
           />
           <NewPasswordFields password={password} confirm={confirm} onChange={setPasswords} errors={errors} />
 
-          {cfg.security.captcha && captcha && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                {captcha.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={captcha.image} alt="Капча" className="h-12 rounded-lg bg-white" />
-                ) : (
-                  <span className="font-semibold">{captcha.question}</span>
-                )}
-                <Button variant="subtle" size="icon" onClick={loadCaptcha} aria-label="Обновить капчу">
-                  <IconRefresh className="size-5" />
-                </Button>
+          {cfg.security.captcha && (
+            // Поле ответа слева, картинка справа; нажатие на картинку — новая капча. Место держим и до загрузки, чтобы форма не прыгала
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <Input
+                  placeholder="Ответ"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  aria-label="Ответ на капчу"
+                  value={captchaAnswer}
+                  onChange={(e) => setCaptchaAnswer(e.target.value)}
+                />
               </div>
-              <Input placeholder="Ответ" value={captchaAnswer} onChange={(e) => setCaptchaAnswer(e.target.value)} />
+              <button
+                type="button"
+                onClick={loadCaptcha}
+                title="Обновить капчу"
+                aria-label="Обновить капчу"
+                className="group relative grid h-12 w-[137px] shrink-0 place-items-center overflow-hidden rounded-xl bg-white"
+              >
+                {captcha?.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={captchaSrc(captcha.image)} alt="Капча" className="size-full object-contain" />
+                ) : captcha?.question ? (
+                  <span className="font-semibold text-black">{captcha.question}</span>
+                ) : (
+                  <span className="size-full animate-pulse bg-black/10" />
+                )}
+                <IconRefresh className="absolute right-1 bottom-1 size-4 text-black/40 transition group-hover:text-black/70" />
+              </button>
             </div>
           )}
 
@@ -457,7 +468,6 @@ export function LoginForm() {
                 <IconBrandTelegram className="size-5 text-[#2aabee]" /> Войти через Telegram
               </Button>
             )}
-            {showTelegramWidget && <TelegramWidget botName={cfg.telegram.botName} onAuth={doTelegramWidget} />}
             {showPasskey && (
               <Button variant="ghost" block onClick={doPasskey} loading={passkeyLoading}>
                 <IconFingerprint className="text-green size-5" /> Войти по Passkey

@@ -25,6 +25,7 @@ services:
       - ./src:/app/src
       - ./public:/app/public
       - ./scripts:/app/scripts
+      - ./next.config.ts:/app/next.config.ts
 
   nginx:
     build:

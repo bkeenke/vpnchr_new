@@ -44,7 +44,99 @@ function normalize(body: unknown): Raw {
     }
   }
   if (!v || typeof v !== 'object') return {};
-  return Object.fromEntries(Object.entries(v as Raw).map(([k, val]) => [k.toUpperCase(), val]));
+  const flat = Object.fromEntries(Object.entries(v as Raw).map(([k, val]) => [k.toUpperCase(), val]));
+  // Сгруппированный формат раскладываем в плоские ключи; при смешанном конфиге группы важнее
+  return { ...flat, ...flattenGrouped(v as Raw) };
+}
+
+/* ───────── Сгруппированный формат ───────── */
+
+/**
+ * Конфиг по разделам (см. config.example.json):
+ *   { "app": { "name": … }, "contacts": { … }, "legal": { … }, "auth": { …, "telegram": { … } },
+ *     "email": { … }, "services": { "vpn": { …, "apps": … }, "proxy": { … }, "actions": { … }, "order": { … } },
+ *     "widgets": { "support": { … } }, "push": { … } }
+ * Путь в группах → прежний плоский ключ; весь остальной код читает плоские ключи.
+ */
+const GROUPED_KEYS: Record<string, string> = {
+  'app.name': 'APP_NAME',
+  'app.description': 'APP_DESCRIPTION',
+
+  'contacts.support_link': 'SUPPORT_LINK',
+  'contacts.email': 'CONTACT_EMAIL',
+  'contacts.phone': 'CONTACT_PHONE',
+
+  'legal.privacy_policy': 'PRIVACY_POLICY_URL',
+  'legal.terms_of_use': 'TERMS_OF_USE_URL',
+  'legal.public_offer': 'PUBLIC_OFFER_URL',
+  'legal.user_agreement': 'USER_AGREEMENT_URL',
+  'legal.return_policy': 'RETURN_POLICY_URL',
+
+  'auth.otp': 'OTP_ENABLE',
+  'auth.passkey': 'PASSKEY_ENABLE',
+  'auth.passkey_auth_disabled': 'PASSKEY_AUTH_DISABLED',
+  'auth.captcha': 'CAPTCHA_ENABLED',
+  'auth.telegram.oidc': 'TELEGRAM_OIDC_AUTH_ENABLE',
+  'auth.telegram.bot_profile': 'TELEGRAM_BOT_AUTH_PROFILE',
+  'auth.telegram.webapp': 'TELEGRAM_WEBAPP_AUTH_ENABLE',
+  'auth.telegram.webapp_auto_auth': 'TELEGRAM_WEBAPP_AUTO_AUTH_ENABLE',
+  'auth.telegram.webapp_profile': 'TELEGRAM_WEBAPP_PROFILE',
+  'auth.telegram.allow_pin': 'ALLOW_TELEGRAM_PIN',
+
+  'email.required': 'EMAIL_REQUIRED',
+  'email.verify_required': 'EMAIL_VERIFY_REQUIRED',
+  'email.allow_verify': 'ALLOW_EMAIL_VERIFY',
+
+  'services.visible_categories': 'VISIBLE_CATEGORIES',
+  'services.vpn.categories': 'VPN_CATEGORY',
+  'services.vpn.title': 'VPN_CATEGORY_TITLE',
+  'services.vpn.storage_prefix': 'VPN_STORAGE_PREFIX',
+  'services.vpn.apps': 'VPN_APPS',
+  'services.proxy.categories': 'PROXY_CATEGORY',
+  'services.proxy.title': 'PROXY_CATEGORY_TITLE',
+  'services.proxy.storage_prefix': 'PROXY_STORAGE_PREFIX',
+  'services.proxy.show_sub_link': 'SHOW_PROXY_SUB_LINK',
+  'services.proxy.show_qr': 'SHOW_PROXY_QR',
+  'services.proxy.happ_cryptolink': 'SHOW_HAPP_CRYPTOLINK',
+  'services.proxy.add_button_text': 'DEVICE_CONFIG_TEXT',
+  'services.proxy.apps': 'PROXY_APPS',
+  'services.actions.block': 'ALLOW_SERVICE_BLOCKED',
+  'services.actions.delete': 'ALLOW_SERVICE_DELETE',
+  'services.actions.change': 'ALLOW_SERVICE_CHANGE',
+  'services.actions.change_force': 'ALLOW_SERVICE_CHANGE_FORCE',
+  'services.actions.change_all_categories': 'SERVICE_CHANGE_ALL_CATEGORY',
+  'services.order.sorting': 'ORDER_SORTING',
+  'services.order.cost_discount': 'ORDER_COST_DISCOUNT',
+  'services.order.cost_with_bonuses': 'ORDER_COST_WITH_BONUSES',
+  'services.order.block_if_unpaid': 'BLOCK_ORDER_IF_UNPAID',
+
+  'widgets.support.url': 'SUPPORT_WIDGET_URL',
+  'widgets.support.api': 'SUPPORT_WIDGET_API',
+  'widgets.bitrix_script_url': 'BITRIX_WIDGET_SCRIPT_URL',
+
+  'push.enabled': 'WEB_PUSH_ENABLE',
+  'push.vapid_public_key': 'VAPID_PUBLIC_KEY',
+};
+
+/** Значение по пути «a.b.c»; имена разделов без учёта регистра. */
+function pick(obj: Raw, path: string): unknown {
+  let cur: unknown = obj;
+  for (const part of path.split('.')) {
+    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return undefined;
+    const entry = Object.entries(cur as Raw).find(([k]) => k.toLowerCase() === part);
+    if (!entry) return undefined;
+    cur = entry[1];
+  }
+  return cur;
+}
+
+function flattenGrouped(obj: Raw): Raw {
+  const out: Raw = {};
+  for (const [path, key] of Object.entries(GROUPED_KEYS)) {
+    const v = pick(obj, path);
+    if (v !== undefined) out[key] = v;
+  }
+  return out;
 }
 
 async function fetchRemote(): Promise<Raw> {
@@ -64,6 +156,10 @@ type Reader = {
   env: (name: string, fallback?: string) => string;
   flag: (name: string, fallback: boolean) => boolean;
   list: (name: string) => string[];
+  /** Как list, но пустые позиции сохраняются — для списков, сопоставляемых по порядку. */
+  items: (name: string) => string[];
+  /** Значение как есть — для вложенных структур (PROXY_APPS). */
+  raw: (name: string) => unknown;
 };
 
 function reader(raw: Raw): Reader {
@@ -74,6 +170,7 @@ function reader(raw: Raw): Reader {
   };
   return {
     env,
+    raw: get,
     flag: (name, fallback) => {
       const v = get(name);
       if (v === undefined || v === null || v === '') return fallback;
@@ -83,6 +180,12 @@ function reader(raw: Raw): Reader {
       const v = get(name);
       const items = Array.isArray(v) ? v.map(String) : env(name).split(',');
       return items.map((s) => s.trim()).filter(Boolean);
+    },
+    items: (name) => {
+      const v = get(name);
+      if (Array.isArray(v)) return v.map((s) => String(s ?? '').trim());
+      const str = env(name);
+      return str ? str.split(',').map((s) => s.trim()) : [];
     },
   };
 }
@@ -96,27 +199,88 @@ const PLATFORM_ENV: Record<Platform, string> = {
   android: 'ANDROID',
 };
 
-function apps(env: Reader['env'], kind: 'VPN' | 'PROXY') {
-  return (Object.keys(PLATFORM_ENV) as Platform[])
-    .map((p) => ({
-      platform: p,
-      url: env(`${kind}_APP_${PLATFORM_ENV[p]}_URL`),
-      name: env(`${kind}_${PLATFORM_ENV[p]}_APP_NAME`),
-    }))
-    .filter((a) => a.url);
+export type App = {
+  /** Ключ приложения в конфиге (happ, incy…) — по нему выбор приложения в карточке услуги. */
+  id: string;
+  platform: Platform;
+  name: string;
+  /** Ссылка на скачивание (может быть пустой, если задан только deeplink). */
+  url: string;
+  /** Префикс deeplink для «Добавить в приложение», например happ://add/ — к нему дописывается ссылка подписки. */
+  schema: string;
+};
+
+const PLATFORM_ALIASES: Record<string, Platform> = { ios: 'ios', android: 'android', windows: 'windows', macos: 'macos', mac: 'macos', linux: 'linux' };
+const isObject = (v: unknown): v is Raw => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Новый формат — один ключ со структурой (объект или JSON-строка):
+ *   "PROXY_APPS": {
+ *     "ios":   { "happ": { "name": "Happ", "url": "https://…", "deeplink": "happ://add/" }, "incy": { … } },
+ *     "macos": { "happ": { … } }
+ *   }
+ * Порядок приложений в объекте = порядок кнопок. Приложения можно задать и массивом [{ "id": "happ", … }].
+ */
+function structuredApps(value: unknown): App[] | null {
+  let v = value;
+  if (typeof v === 'string') {
+    if (!v.trim()) return null;
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  if (!isObject(v)) return null;
+  const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '');
+  return Object.entries(v).flatMap(([key, list]) => {
+    const platform = PLATFORM_ALIASES[key.toLowerCase()];
+    if (!platform) return [];
+    const entries: [string, unknown][] = Array.isArray(list)
+      ? list.map((a, i) => [str(isObject(a) ? a.id : '') || String(i), a])
+      : isObject(list)
+        ? Object.entries(list)
+        : [];
+    return entries.flatMap(([id, a]) => {
+      if (!isObject(a)) return [];
+      const app = {
+        id,
+        platform,
+        name: str(a.name) || id,
+        url: str(a.url),
+        schema: str(a.deeplink) || str(a.deeplinks) || str(a.schema),
+      };
+      return app.url || app.schema ? [app] : [];
+    });
+  });
 }
 
-function urlSchemas(env: Reader['env']) {
-  const out: Partial<Record<Platform, string>> = {};
-  for (const p of Object.keys(PLATFORM_ENV) as Platform[]) {
-    const v = env(`${PLATFORM_ENV[p]}_PROXY_URL_SCHEMA`);
-    if (v) out[p] = v;
-  }
-  return out;
+/**
+ * Приложения: PROXY_APPS / VPN_APPS, а если их нет — старые плоские ключи
+ * (PROXY_APP_IOS_URL, PROXY_IOS_APP_NAME, IOS_PROXY_URL_SCHEMA; несколько значений — через запятую по порядку).
+ */
+function apps(r: Reader, kind: 'VPN' | 'PROXY'): App[] {
+  const structured = structuredApps(r.raw(`${kind}_APPS`));
+  if (structured) return kind === 'VPN' ? structured.map((a) => ({ ...a, schema: '' })) : structured;
+
+  return (Object.keys(PLATFORM_ENV) as Platform[]).flatMap((platform) => {
+    const p = PLATFORM_ENV[platform];
+    const urls = r.items(`${kind}_APP_${p}_URL`);
+    const names = r.items(`${kind}_${p}_APP_NAME`);
+    const schemas = kind === 'PROXY' ? r.items(`${p}_PROXY_URL_SCHEMA`) : [];
+    return Array.from({ length: Math.max(urls.length, schemas.length) }, (_, i) => ({
+      id: (names[i] || String(i)).toLowerCase(),
+      platform,
+      name: names[i] ?? '',
+      url: urls[i] ?? '',
+      schema: schemas[i] ?? '',
+    })).filter((a) => a.url || a.schema);
+  });
 }
 
 /** Всё, что безопасно отдавать в браузер. */
-function buildPublicConfig({ env, flag, list }: Reader) {
+function buildPublicConfig(r: Reader) {
+  const { env, flag, list } = r;
   return {
     appName: env('APP_NAME', 'VPNCHR'),
     appDescription: env('APP_DESCRIPTION', 'Быстрый и надёжный VPN'),
@@ -132,8 +296,6 @@ function buildPublicConfig({ env, flag, list }: Reader) {
     ].filter((l) => l.href) as { key: string; href: string }[],
 
     telegram: {
-      botName: env('TELEGRAM_BOT_NAME'),
-      widgetAuth: flag('TELEGRAM_BOT_AUTH_ENABLE', false) && !!env('TELEGRAM_BOT_NAME'),
       oidcAuth: flag('TELEGRAM_OIDC_AUTH_ENABLE', false),
       botProfile: env('TELEGRAM_BOT_AUTH_PROFILE', 'telegram_bot'),
       webAppAuth: flag('TELEGRAM_WEBAPP_AUTH_ENABLE', false),
@@ -176,9 +338,8 @@ function buildPublicConfig({ env, flag, list }: Reader) {
       orderSorting: env('ORDER_SORTING', 'cost_asc'),
       costDiscount: flag('ORDER_COST_DISCOUNT', true),
       costWithBonuses: flag('ORDER_COST_WITH_BONUSES', false),
-      vpnApps: apps(env, 'VPN'),
-      proxyApps: apps(env, 'PROXY'),
-      proxyUrlSchemas: urlSchemas(env),
+      vpnApps: apps(r, 'VPN'),
+      proxyApps: apps(r, 'PROXY'),
     },
 
     widgets: {

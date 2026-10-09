@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: 'Профиль' };
 
 export default async function ProfilePage() {
   const cfg = await getPublicConfig();
-  const showTelegram = cfg.telegram.allowPin || cfg.telegram.widgetAuth;
+  const showTelegram = cfg.telegram.allowPin || cfg.telegram.oidcAuth;
   const [user, forecast, referrals, telegram] = await Promise.all([
     getCurrentUser(),
     getForecast().catch(() => null),
