@@ -1,6 +1,7 @@
 import 'server-only';
 import { getServerConfig } from './config';
 import { cachedLoader } from './remote';
+import { descrLines } from './utils';
 
 export type PricePlan = {
   id: number;
@@ -28,15 +29,6 @@ type RawPlan = {
 
 const num = (v: unknown) => (v === '' || v === null || v === undefined ? NaN : Number(v));
 
-/** В descr SHM встречаются и буквальные «\n», и настоящие переводы строк. */
-function features(descr = '') {
-  return descr
-    .replace(/\\n/g, '\n')
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 function normalize(p: RawPlan): PricePlan {
   const cost = num(p.cost) || 0;
   const real = num(p.real_cost);
@@ -47,7 +39,7 @@ function normalize(p: RawPlan): PricePlan {
     cost: hasDiscount ? real : cost,
     oldCost: hasDiscount ? cost : undefined,
     period: num(p.period) || 0,
-    features: features(p.descr),
+    features: descrLines(p.descr),
     popular: p.is_popular === true || Number(p.is_popular) === 1,
   };
 }

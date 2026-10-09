@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { IconCheck, IconCopy, IconFingerprint, IconKey, IconLock, IconPencil, IconShieldLock, IconTrash } from '@tabler/icons-react';
-import { api, first } from '@/lib/api';
+import { api, first, type ApiError } from '@/lib/api';
 import { toast } from '@/lib/toast';
+import { shmMessage } from '@/lib/shm-messages';
 import { useClientValue } from '@/lib/hooks';
 import { b64urlToBuffer, bufferToB64url } from '@/lib/webauthn';
 import { cn, formatDate } from '@/lib/utils';
@@ -14,10 +15,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ConfirmModal, Modal } from '@/components/ui/modal';
+import { NewPasswordFields } from '@/components/auth/new-password';
 
 type Tab = 'password' | 'otp' | 'passkey' | 'passwordAuth';
 
-export function SecuritySettings() {
+export function SecuritySettings({ login }: { login: string }) {
   const cfg = useConfig();
   const passkey = cfg.security.passkey && !cfg.security.passkeyAuthDisabled;
   const tabs: { id: Tab; label: string; icon: typeof IconKey }[] = [
@@ -27,21 +29,34 @@ export function SecuritySettings() {
     ...(passkey ? [{ id: 'passwordAuth' as const, label: 'Вход', icon: IconLock }] : []),
   ];
   const [tab, setTab] = useState<Tab>('password');
+  // Открытые вкладки остаются смонтированными (скрытыми) — без повторной загрузки и прыжков при переключении
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set(['password']));
+  const open = (id: Tab) => (setTab(id), setVisited((v) => (v.has(id) ? v : new Set(v).add(id))));
+  const panels: Record<Tab, React.ReactNode> = {
+    password: <PasswordChange login={login} />,
+    otp: <OtpSettings />,
+    passkey: <PasskeySettings />,
+    passwordAuth: <PasswordAuthSettings active={tab === 'passwordAuth'} />,
+  };
 
   return (
     <Card className="lg:col-span-2">
       <p className="mb-4 font-semibold">Безопасность</p>
       {tabs.length > 1 && (
-        <div className="border-line mb-5 flex gap-1 overflow-x-auto rounded-full border bg-black/30 p-1 text-sm font-semibold" role="tablist">
+        // На мобильном — по две вкладки в строке (нечётная последняя растягивается), с sm — одной строкой
+        <div
+          className="border-line mb-5 flex flex-wrap gap-1 rounded-2xl border bg-black/30 p-1 text-sm font-semibold sm:flex-nowrap sm:rounded-full"
+          role="tablist"
+        >
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               role="tab"
               aria-selected={tab === id}
-              onClick={() => setTab(id)}
+              onClick={() => open(id)}
               className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 whitespace-nowrap transition',
+                'flex flex-1 basis-[calc(50%-2px)] items-center justify-center gap-1.5 rounded-xl px-3 py-2 whitespace-nowrap transition sm:basis-0 sm:rounded-full',
                 tab === id ? 'neon-ring bg-green/10' : 'text-muted hover:text-text',
               )}
             >
@@ -50,47 +65,105 @@ export function SecuritySettings() {
           ))}
         </div>
       )}
-      {tab === 'password' && <PasswordChange />}
-      {tab === 'otp' && <OtpSettings />}
-      {tab === 'passkey' && <PasskeySettings />}
-      {tab === 'passwordAuth' && <PasswordAuthSettings />}
+      {tabs.map(({ id }) =>
+        visited.has(id) ? (
+          <div key={id} role="tabpanel" hidden={tab !== id}>
+            {panels[id]}
+          </div>
+        ) : null,
+      )}
     </Card>
   );
 }
 
-function PasswordChange() {
-  const [password, setPassword] = useState('');
+/** Текущий пароль проверяем входом через /user/auth, затем меняем пароль и выходим: SHM всё равно удаляет все сессии пользователя. */
+function PasswordChange({ login }: { login: string }) {
+  const [form, setForm] = useState({ old: '', password: '', confirm: '' });
+  const [errors, setErrors] = useState<Partial<Record<keyof typeof form, string>>>({});
   const [saving, setSaving] = useState(false);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function verifyOldPassword(): Promise<'ok' | 'wrong' | 'throttled'> {
+    try {
+      // 200 (сессия или otp_required) — пароль верный
+      await api.post('/user/auth', { login, password: form.old });
+      return 'ok';
+    } catch (e) {
+      const { status } = e as ApiError;
+      // 403 (вход по паролю отключён, запрет по IP) SHM отдаёт только после совпадения пароля
+      if (status === 403) return 'ok';
+      if (status === 401) return 'wrong';
+      if (status === 429) return 'throttled';
+      throw e;
+    }
+  }
 
   async function save() {
-    if (password.length < 6) return toast.error('Минимум 6 символов');
+    const errs: typeof errors = {};
+    if (!form.old) errs.old = 'Введите текущий пароль';
+    if (form.password.length < 6) errs.password = 'Минимум 6 символов';
+    else if (form.password === form.old) errs.password = 'Новый пароль совпадает с текущим';
+    if (form.confirm !== form.password) errs.confirm = 'Пароли не совпадают';
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+
     setSaving(true);
     try {
-      await api.post('/user/passwd', { password });
-      toast.success('Пароль изменён');
-      setPassword('');
-    } catch {
-      toast.error('Не удалось изменить пароль');
+      const check = await verifyOldPassword();
+      if (check === 'wrong') return setErrors({ old: 'Неверный текущий пароль' });
+      if (check === 'throttled') return toast.error('Слишком много попыток. Попробуйте позже');
+      await api.post('/user/passwd', { password: form.password, old_password: form.old });
+    } catch (e) {
+      return toast.error(shmMessage((e as ApiError).data?.error, 'Не удалось изменить пароль'));
     } finally {
       setSaving(false);
     }
+
+    toast.success('Пароль изменён. Войдите с новым паролем');
+    await fetch('/logout', { method: 'POST', redirect: 'manual' }).catch(() => {});
+    // Полная перезагрузка сбрасывает клиентское состояние
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    setTimeout(() => window.location.assign('/login'), 1200);
   }
 
   return (
     <form
-      className="flex flex-col gap-3 sm:flex-row sm:items-end"
+      className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <div className="flex-1">
-        <Input label="Новый пароль" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      <input type="text" name="username" autoComplete="username" value={login} readOnly hidden />
+      <Input label="Текущий пароль" type="password" autoComplete="current-password" value={form.old} onChange={set('old')} error={errors.old} />
+      <div className="grid gap-3 sm:grid-cols-2 sm:items-start">
+        <NewPasswordFields
+          label="Новый пароль"
+          password={form.password}
+          confirm={form.confirm}
+          onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+          errors={errors}
+        />
       </div>
-      <Button type="submit" loading={saving} disabled={!password}>
+      <p className="text-muted text-xs">После смены пароля все сеансы завершатся — войдите заново с новым паролем.</p>
+      <Button type="submit" loading={saving} disabled={!form.old || !form.password || !form.confirm}>
         Сменить пароль
       </Button>
     </form>
+  );
+}
+
+/** Заглушка строки настройки (заголовок, описание, кнопка) — той же высоты, что и загруженная. */
+function SettingSkeleton() {
+  return (
+    <div className="flex animate-pulse flex-wrap items-center justify-between gap-3" aria-busy="true">
+      <div className="min-w-0 flex-1 space-y-2.5">
+        <div className="h-5 w-56 max-w-full rounded-md bg-white/10" />
+        <div className="h-4 w-full max-w-md rounded-md bg-white/5" />
+        <div className="h-4 w-2/3 max-w-xs rounded-md bg-white/5" />
+      </div>
+      <div className="h-9 w-28 rounded-full bg-white/10" />
+    </div>
   );
 }
 
@@ -168,7 +241,7 @@ function OtpSettings() {
     }
   }
 
-  if (loading) return <p className="text-muted text-sm">Загрузка…</p>;
+  if (loading) return <SettingSkeleton />;
 
   return (
     <div className="space-y-4">
@@ -375,7 +448,11 @@ function PasskeySettings() {
         </Button>
       </div>
       {loading ? (
-        <p className="text-muted text-sm">Загрузка…</p>
+        <div className="space-y-2" aria-busy="true">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-[66px] animate-pulse rounded-xl bg-white/5" />
+          ))}
+        </div>
       ) : !data?.length ? (
         <p className="border-line text-muted rounded-xl border border-dashed p-4 text-center text-sm">Пока нет ключей</p>
       ) : (
@@ -427,13 +504,19 @@ function PasskeySettings() {
 
 /* ───────── Вход по паролю ───────── */
 
-function PasswordAuthSettings() {
+/** active — вкладка открыта: перечитываем статус (Passkey мог появиться на соседней вкладке), не сбрасывая показанное. */
+function PasswordAuthSettings({ active }: { active: boolean }) {
   const {
     data: status,
     loading,
     error,
     reload,
   } = useLoad(async () => first<{ password_auth_disabled: number; passkey_enabled: number }>(await api.get('/user/password-auth')) ?? null);
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (mounted.current && active) reload();
+    mounted.current = true;
+  }, [active, reload]);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -452,7 +535,7 @@ function PasswordAuthSettings() {
     }
   }
 
-  if (loading) return <p className="text-muted text-sm">Загрузка…</p>;
+  if (loading) return <SettingSkeleton />;
   if (error || !status) return <p className="text-danger text-sm">Не удалось загрузить настройки</p>;
   const disabled = status.password_auth_disabled === 1;
   const passkeyReady = !!status.passkey_enabled;

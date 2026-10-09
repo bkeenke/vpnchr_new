@@ -17,7 +17,9 @@ Next.js 16 (App Router, SSR) + Tailwind CSS 4. Клиент для [SHM](https:/
 Браузер ──► Next.js (SSR) ──► SHM API
              │
              ├─ серверные компоненты читают SHM напрямую (lib/shm.ts)
-             └─ /shm/* — прокси для действий из браузера (app/shm/[...path]/route.ts)
+             ├─ /api/* — прокси для действий из браузера (app/api/[...path]/route.ts → lib/shm-proxy.ts),
+             │          отдаёт из ответа только data и items, без id сессии
+             └─ /shm/* — только адреса возврата OAuth/OIDC (Telegram), остальное 404
 ```
 
 - Сессия хранится в **httpOnly-cookie** `session_id` — JavaScript страницы не видит токен. Прокси сам сохраняет сессию из ответов авторизации и подставляет её в запросы к SHM.
@@ -62,7 +64,7 @@ CONFIG_KEY=remna
 
 Регистр ключей не важен, флаги — `true`/`false` или строки `"true"`/`"false"`, списки — массив или строка через запятую. Изменения в SHM применяются без перезапуска, в пределах `CONFIG_TTL`.
 
-Прокси кабинета не пропускает `/shm/v1/public/get_config` из браузера. Сам эндпоинт SHM публичный, поэтому **не храните в этом конфиге секреты**.
+Прокси кабинета не пропускает `/api/public/get_config` из браузера. Сам эндпоинт SHM публичный, поэтому **не храните в этом конфиге секреты**.
 
 ## Тарифы на главной
 
@@ -92,9 +94,9 @@ docker compose -f docker-compose.dev.yml up -d --build
 Открыть **http://localhost:3002**. Внутри два контейнера:
 
 - `web` — `next dev`, папки `src/`, `public/`, `scripts/` подключены томами: правки применяются на лету, без пересборки;
-- `nginx` — точка входа на порту 3002. Проксирует всё в Next (с WebSocket для горячей перезагрузки), закрывает `/shm/v1/admin`, отдаёт `/healthcheck`.
+- `nginx` — точка входа на порту 3002. Проксирует всё в Next (с WebSocket для горячей перезагрузки), закрывает `/api/admin` и `/shm/v1/admin`, отдаёт `/healthcheck`.
 
-Кабинет работает с **боевым SHM** (`SHM_URL=https://api.vpnchr.com` в `docker-compose.dev.yml`), конфиг и прайс кэшируются всего на 10 секунд. К SHM обращается сервер Next, а не nginx: маршрут `/shm/*` в Next хранит сессию в httpOnly-cookie и защищает от CSRF.
+Кабинет работает с **боевым SHM** (`SHM_URL=https://api.vpnchr.com` в `docker-compose.dev.yml`), конфиг и прайс кэшируются всего на 10 секунд. К SHM обращается сервер Next, а не nginx: маршрут `/api/*` в Next хранит сессию в httpOnly-cookie и защищает от CSRF.
 
 После изменения `package.json` или `next.config.ts` пересоберите: `docker compose -f docker-compose.dev.yml up -d --build`. Логи — `docker compose -f docker-compose.dev.yml logs -f web`.
 
@@ -112,7 +114,7 @@ docker compose up -d --build     # берёт переменные из .env, п
 ## Важно при настройке SHM
 
 - **Passkey**: `rpId` в SHM должен совпадать с доменом кабинета.
-- **Платёжные системы**: ссылки `shm_url` вида `https://…/shm/v1/…` автоматически идут через прокси кабинета, чтобы запрос ушёл с сессией.
+- **Платёжные системы**: ссылки `shm_url` вида `https://…/shm/v1/…` автоматически переводятся на `/api/…` прокси кабинета, чтобы запрос ушёл с сессией.
 - **Telegram OIDC**: `return_url` — адрес кабинета; после входа SHM возвращает `?session_id=…`, кабинет сохраняет его в httpOnly-cookie.
 
 ## Картинки

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { IconArrowLeft, IconBrandTelegram, IconFingerprint, IconRefresh } from '@tabler/icons-react';
 import { api, ApiError, first } from '@/lib/api';
+import { shmMessage } from '@/lib/shm-messages';
 import { toast } from '@/lib/toast';
 import { b64urlToBuffer, bufferToB64url } from '@/lib/webauthn';
 import { getTelegramWebApp, type TelegramUser } from '@/lib/telegram';
@@ -12,6 +13,7 @@ import { safeNext } from '@/lib/utils';
 import { useConfig } from '@/components/providers/config';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Input } from '@/components/ui/input';
+import { NewPasswordFields } from './new-password';
 import { TelegramWidget } from './telegram-widget';
 
 type View = 'login' | 'register' | 'otp' | 'reset' | 'newPassword';
@@ -40,6 +42,7 @@ export function LoginForm() {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const setPasswords = (v: { password: string; confirm: string }) => (setPassword(v.password), setConfirm(v.confirm));
   const [otp, setOtp] = useState('');
   const [resetLogin, setResetLogin] = useState('');
   const [resetToken, setResetToken] = useState<string | null>(null);
@@ -138,12 +141,7 @@ export function LoginForm() {
       await doLogin();
     } catch (e) {
       const err = e as ApiError;
-      const msg = String(err.data?.error ?? '');
-      if (err.status === 429) toast.error('Слишком много попыток. Попробуйте позже');
-      else if (msg === 'Invalid captcha') toast.error('Неверный ответ на капчу');
-      else if (msg === 'Captcha required') toast.error('Введите ответ на капчу');
-      else if (msg === 'Login already in use' || msg === 'Email already in use') toast.error('Этот логин уже занят');
-      else toast.error('Не удалось зарегистрироваться');
+      toast.error(err.status === 429 ? 'Слишком много попыток. Попробуйте позже' : shmMessage(err.data?.error, 'Не удалось зарегистрироваться'));
       if (cfg.security.captcha) void loadCaptcha();
       setLoading(false);
     }
@@ -179,9 +177,9 @@ export function LoginForm() {
         setPassword('');
         setConfirm('');
         setView('login');
-      } else throw new Error();
-    } catch {
-      toast.error('Ссылка для сброса пароля недействительна');
+      } else toast.error(shmMessage(res?.msg, 'Ссылка для сброса пароля недействительна'));
+    } catch (e) {
+      toast.error(shmMessage((e as ApiError).data?.error, 'Ссылка для сброса пароля недействительна'));
     } finally {
       setLoading(false);
     }
@@ -237,7 +235,7 @@ export function LoginForm() {
     });
     // Это API-маршрут прокси (редирект на Telegram), а не страница приложения
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign(`/shm/v1/telegram/web/auth/start?${q}`);
+    window.location.assign(`/api/telegram/web/auth/start?${q}`);
   }
 
   const doTelegramWebApp = useCallback(async () => {
@@ -343,22 +341,7 @@ export function LoginForm() {
             onChange={(e) => setLogin(e.target.value)}
             autoFocus
           />
-          <Input
-            label="Пароль"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            error={errors.password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Input
-            label="Повторите пароль"
-            type="password"
-            autoComplete="new-password"
-            value={confirm}
-            error={errors.confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
+          <NewPasswordFields password={password} confirm={confirm} onChange={setPasswords} errors={errors} />
 
           {cfg.security.captcha && captcha && (
             <div className="space-y-2">
@@ -451,23 +434,7 @@ export function LoginForm() {
             void doNewPassword();
           }}
         >
-          <Input
-            label="Новый пароль"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            error={errors.password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoFocus
-          />
-          <Input
-            label="Повторите пароль"
-            type="password"
-            autoComplete="new-password"
-            value={confirm}
-            error={errors.confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
+          <NewPasswordFields label="Новый пароль" password={password} confirm={confirm} onChange={setPasswords} errors={errors} autoFocus />
           <Button type="submit" size="lg" block loading={loading}>
             Сохранить пароль
           </Button>

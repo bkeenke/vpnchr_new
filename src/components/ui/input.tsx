@@ -6,8 +6,9 @@ const base =
 
 type FieldProps = { label?: string; error?: string | false; hint?: string };
 
-export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & FieldProps>(function Input(
-  { label, error, hint, className, id, ...props },
+/** suffix — кнопка/иконка внутри поля справа. */
+export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & FieldProps & { suffix?: React.ReactNode }>(function Input(
+  { label, error, hint, suffix, className, id, ...props },
   ref,
 ) {
   const auto = useId();
@@ -19,7 +20,10 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
           {label}
         </label>
       )}
-      <input ref={ref} id={inputId} aria-invalid={!!error} className={cn(base, error && 'border-danger', className)} {...props} />
+      <div className="relative">
+        <input ref={ref} id={inputId} aria-invalid={!!error} className={cn(base, error && 'border-danger', suffix && 'pr-12', className)} {...props} />
+        {suffix && <div className="absolute inset-y-0 right-1 flex items-center">{suffix}</div>}
+      </div>
       {error ? <p className="text-danger text-xs">{error}</p> : hint ? <p className="text-muted text-xs">{hint}</p> : null}
     </div>
   );

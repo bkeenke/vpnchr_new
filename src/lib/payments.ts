@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, list, openLink } from './api';
+import { shmMessage } from './shm-messages';
 import type { PaySystem } from './types';
 
 /**
@@ -10,8 +11,8 @@ import type { PaySystem } from './types';
  */
 export function payUrl(ps: PaySystem, amount: number | string) {
   const raw = `${ps.shm_url}${amount}`;
-  const i = raw.indexOf('/shm/');
-  return i >= 0 ? raw.slice(i) : raw;
+  const i = raw.indexOf('/shm/v1/');
+  return i >= 0 ? `/api/${raw.slice(i + '/shm/v1/'.length)}` : raw;
 }
 
 async function fetchPaySystems(): Promise<PaySystem[]> {
@@ -52,7 +53,8 @@ export async function pay(ps: PaySystem, amount: number | string, preopened?: Wi
     const res = await fetch(url, { credentials: 'same-origin' });
     if (res.status === 200 || res.status === 204) return { ok: true, instant: true };
     const data = await res.json().catch(() => ({}));
-    return { ok: false, instant: true, error: data.msg_ru || data.msg };
+    const msg = data.msg_ru || data.msg;
+    return { ok: false, instant: true, error: msg ? shmMessage(msg) : undefined };
   }
   if (preopened) preopened.location.href = url;
   else openLink(new URL(url, window.location.origin).href);

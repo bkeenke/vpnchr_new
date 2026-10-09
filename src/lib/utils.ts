@@ -15,6 +15,21 @@ export function formatMoney(value: number | string) {
   return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽`;
 }
 
+/** Цена за месяц с точностью до десятых (1799 ₽ за 12 мес → 149,9 ₽); null, если период не больше месяца. */
+export function monthlyCost(cost: number, period: number) {
+  const months = Math.trunc(Number(period) || 0);
+  return months > 1 ? Math.round((cost / months) * 10) / 10 : null;
+}
+
+/** Строки описания тарифа: в descr SHM встречаются и буквальные «\n», и настоящие переводы строк. */
+export function descrLines(descr = '') {
+  return descr
+    .replace(/\\n/g, '\n')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function formatDate(value?: string | null) {
   if (!value) return '—';
   const d = new Date(value.replace(' ', 'T'));

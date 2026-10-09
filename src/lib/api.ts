@@ -1,6 +1,8 @@
 'use client';
 
-/** Клиентские запросы к SHM через серверный прокси /shm (сессия — в httpOnly-cookie). */
+import { shmMessage } from './shm-messages';
+
+/** Клиентские запросы к SHM через серверный прокси /api (сессия — в httpOnly-cookie). */
 
 export class ApiError extends Error {
   constructor(
@@ -15,7 +17,7 @@ export class ApiError extends Error {
 type Query = Record<string, string | number | undefined>;
 
 async function request<T>(method: string, path: string, opts: { body?: unknown; query?: Query } = {}): Promise<T> {
-  const url = new URL(`/shm/v1${path}`, window.location.origin);
+  const url = new URL(`/api${path}`, window.location.origin);
   for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined) url.searchParams.set(k, String(v));
   const res = await fetch(url, {
     method,
@@ -37,7 +39,7 @@ async function request<T>(method: string, path: string, opts: { body?: unknown; 
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.assign('/login');
     }
-    throw new ApiError(res.status, d, String(d?.error ?? d?.msg ?? res.statusText));
+    throw new ApiError(res.status, d, shmMessage(d?.error ?? d?.msg));
   }
   return data as T;
 }

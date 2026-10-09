@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { shmMessage } from '@/lib/shm-messages';
 import { toast } from '@/lib/toast';
 import { useEmailModals } from '@/lib/email-store';
 import { useUser } from '@/components/providers/user';
@@ -76,7 +77,7 @@ function EmailForm() {
     setSaving(true);
     try {
       const msg = msgOf(await api.put('/user/email', { email: v }));
-      if (msg && msg !== 'Successful') return void toast.error(msg === 'is not email' ? 'Некорректный email' : msg);
+      if (msg && msg !== 'Successful') return void toast.error(shmMessage(msg, 'Не удалось сохранить email'));
       toast.success('Email сохранён');
       router.refresh();
       if (cfg.email.verifyRequired || cfg.email.allowVerify) openVerify(v);
@@ -116,7 +117,7 @@ function VerifyForm({ email }: { email: string }) {
   async function send() {
     try {
       const msg = msgOf(await api.post('/user/email', { email }));
-      if (msg && msg !== 'Verification code sent') return void toast.error(msg);
+      if (msg && msg !== 'Verification code sent') return void toast.error(shmMessage(msg, 'Не удалось отправить код'));
       localStorage.setItem(COOLDOWN_KEY, String(Date.now()));
       setLeft(cooldownLeft());
       toast.success('Код отправлен на почту');
@@ -140,7 +141,7 @@ function VerifyForm({ email }: { email: string }) {
     setConfirming(true);
     try {
       const msg = msgOf(await api.post('/user/email', { email, code: code.trim() }));
-      if (msg && msg !== 'Email verified successfully') return void toast.error(msg);
+      if (msg && msg !== 'Email verified successfully') return void toast.error(shmMessage(msg, 'Неверный код'));
       toast.success('Email подтверждён');
       close();
       router.refresh();

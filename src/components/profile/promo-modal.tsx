@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import { shmMessage } from '@/lib/shm-messages';
 import { toast } from '@/lib/toast';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -30,7 +31,7 @@ function PromoForm({ onDone }: { onDone: () => void }) {
       onDone();
       router.refresh();
     } catch (e) {
-      toast.error(String((e as ApiError).data?.error ?? 'Не удалось применить промокод'));
+      toast.error(shmMessage((e as ApiError).data?.error, 'Не удалось применить промокод'));
     } finally {
       setLoading(false);
     }

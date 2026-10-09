@@ -2,9 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { IconArrowRight, IconCheck, IconBrandVk, IconBrandYoutubeFilled, IconDots, IconInfinity } from '@tabler/icons-react';
 import { getCurrentUser } from '@/lib/shm';
-import { cn, formatMoney, formatPeriod } from '@/lib/utils';
+import { cn, formatMoney, formatPeriod, monthlyCost } from '@/lib/utils';
 import { getPriceList, type PricePlan } from '@/lib/price-list';
-import { Wordmark } from '@/components/brand/logo';
 import { FEATURES, NeonCircle, PLATFORM_ICONS } from '@/components/brand/icons';
 import { buttonVariants } from '@/components/ui/button';
 import { SiteHeader } from '@/components/site/header';
@@ -44,7 +43,7 @@ export default async function HomePage() {
             priority
             placeholder="blur"
             sizes="100vw"
-            className="-z-20 object-cover object-[70%_center] lg:object-[center_65%]"
+            className="-z-20 object-cover object-[49%_center] lg:object-[center_65%]"
           />
           {/* затемнения для читаемости текста */}
           <div className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(5,8,7,.55)_0%,rgba(5,8,7,.05)_30%,rgba(5,8,7,.1)_60%,rgba(5,8,7,.95)_100%)]" />
@@ -61,13 +60,9 @@ export default async function HomePage() {
               людей
             </p>
 
-            <div className="animate-rise mt-6 text-center sm:mt-0">
-              <Wordmark className="block text-[17vw] sm:text-[14vw] lg:text-[168px]" />
-            </div>
-
             <ul
               id="features"
-              className="animate-rise mx-auto mt-8 grid w-full max-w-3xl scroll-mt-28 grid-cols-4 gap-2 [animation-delay:.1s] sm:mt-10 sm:gap-6"
+              className="animate-rise mx-auto mt-4 grid w-full max-w-3xl scroll-mt-28 grid-cols-4 gap-2 [animation-delay:.1s] sm:mt-10 sm:gap-6"
             >
               {FEATURES.map(({ icon: Icon, label }) => (
                 <li key={label[1]} className="flex flex-col items-center gap-3 text-center">
@@ -214,7 +209,7 @@ export default async function HomePage() {
 }
 
 function PlanCard({ plan: p, href }: { plan: PricePlan; href: string }) {
-  const perMonth = p.period > 1 ? Math.round(p.cost / p.period) : null;
+  const perMonth = monthlyCost(p.cost, p.period);
   return (
     <article
       className={cn('relative flex flex-col rounded-2xl p-6 transition hover:-translate-y-0.5', p.popular ? 'glass-green' : 'glass hover:border-line-green')}
@@ -225,14 +220,21 @@ function PlanCard({ plan: p, href }: { plan: PricePlan; href: string }) {
         </span>
       )}
       <h3 className="font-semibold uppercase">{p.name}</h3>
-      <p className="mt-3 flex items-baseline gap-2">
-        <span className="font-display text-4xl font-bold">{formatMoney(p.cost)}</span>
-        {p.oldCost && <span className="text-muted line-through">{formatMoney(p.oldCost)}</span>}
-      </p>
-      <p className="text-muted mt-1 text-xs">
-        за {formatPeriod(p.period)}
-        {perMonth && <span className="text-green"> · {formatMoney(perMonth)}/мес</span>}
-      </p>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div>
+          <p className="flex items-baseline gap-2">
+            <span className="font-display text-4xl font-bold">{formatMoney(p.cost)}</span>
+            {p.oldCost && <span className="text-muted line-through">{formatMoney(p.oldCost)}</span>}
+          </p>
+          <p className="text-muted mt-1 text-xs">за {formatPeriod(p.period)}</p>
+        </div>
+        {perMonth && (
+          <p className="text-right">
+            <span className="text-muted block text-xs">1 мес</span>
+            <span className="text-green font-semibold whitespace-nowrap">{formatMoney(perMonth)}</span>
+          </p>
+        )}
+      </div>
       {p.features.length > 0 && (
         <ul className="mt-5 space-y-2 text-sm text-white/85">
           {p.features.map((f) => (

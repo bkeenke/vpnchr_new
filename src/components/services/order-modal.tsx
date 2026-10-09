@@ -7,7 +7,7 @@ import { api, first, list } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { pay, usePaySystems } from '@/lib/payments';
 import { categoryTitle, normalizeCategory, type Category } from '@/lib/services';
-import { cn, formatMoney, formatPeriod } from '@/lib/utils';
+import { cn, descrLines, formatMoney, formatPeriod, monthlyCost } from '@/lib/utils';
 import { useConfig } from '@/components/providers/config';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -56,6 +56,7 @@ function OrderDialog({ open, onOpenChange, onDone, current, initialServiceId }: 
   const effectiveCost = (s: OrderService) => Number(sc.costWithBonuses ? s.real_cost_with_bonuses : sc.costDiscount ? s.real_cost : s.cost) || 0;
   const topUp = (s: OrderService) => Math.max(0, Math.ceil((effectiveCost(s) - balance) * 100) / 100);
   const enough = selected ? balance >= effectiveCost(selected) : false;
+  const selectedPerMonth = selected ? monthlyCost(effectiveCost(selected), Number(selected.period)) : null;
 
   const paySystems = usePaySystems(!!selected && !isChange && !enough);
 
@@ -182,6 +183,7 @@ function OrderDialog({ open, onOpenChange, onDone, current, initialServiceId }: 
                 <div className="grid gap-3 sm:grid-cols-2">
                   {list.map((s, i) => {
                     const cost = effectiveCost(s);
+                    const perMonth = monthlyCost(cost, Number(s.period));
                     const featured = list.length > 1 && i === list.length - 1;
                     return (
                       <button
@@ -199,12 +201,22 @@ function OrderDialog({ open, onOpenChange, onDone, current, initialServiceId }: 
                           </span>
                         )}
                         <p className="font-semibold uppercase">{s.name}</p>
-                        <p className="mt-2 flex items-baseline gap-2">
-                          <span className="font-display text-3xl font-bold">{formatMoney(cost)}</span>
-                          {s.cost > cost && <span className="text-muted text-sm line-through">{formatMoney(s.cost)}</span>}
-                        </p>
-                        <p className="text-muted mt-1 text-xs">за {formatPeriod(s.period)}</p>
-                        {s.descr && <p className="text-muted mt-3 line-clamp-2 text-sm">{s.descr}</p>}
+                        <div className="mt-2 flex items-end justify-between gap-3">
+                          <div>
+                            <p className="flex items-baseline gap-2">
+                              <span className="font-display text-3xl font-bold">{formatMoney(cost)}</span>
+                              {s.cost > cost && <span className="text-muted text-sm line-through">{formatMoney(s.cost)}</span>}
+                            </p>
+                            <p className="text-muted mt-1 text-xs">за {formatPeriod(s.period)}</p>
+                          </div>
+                          {perMonth && (
+                            <p className="text-right">
+                              <span className="text-muted block text-xs">1 мес</span>
+                              <span className="text-green font-semibold whitespace-nowrap">{formatMoney(perMonth)}</span>
+                            </p>
+                          )}
+                        </div>
+                        {s.descr && <p className="text-muted mt-3 line-clamp-2 text-sm whitespace-pre-line">{descrLines(s.descr).join('\n')}</p>}
                         <span className="text-green mt-4 flex items-center gap-1 text-sm font-semibold">
                           Выбрать <IconArrowRight className="size-4 transition group-hover:translate-x-1" />
                         </span>
@@ -223,7 +235,7 @@ function OrderDialog({ open, onOpenChange, onDone, current, initialServiceId }: 
           </button>
 
           <div className="glass rounded-2xl p-5">
-            {selected.descr && <p className="text-muted mb-4 text-sm whitespace-pre-wrap">{selected.descr}</p>}
+            {selected.descr && <p className="text-muted mb-4 text-sm whitespace-pre-line">{descrLines(selected.descr).join('\n')}</p>}
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-muted text-xs">Стоимость</p>
@@ -238,6 +250,7 @@ function OrderDialog({ open, onOpenChange, onDone, current, initialServiceId }: 
               <div className="text-right">
                 <p className="text-muted text-xs">Период</p>
                 <p className="font-semibold">{formatPeriod(selected.period)}</p>
+                {selectedPerMonth && <p className="text-green mt-1 text-xs whitespace-nowrap">1 мес = {formatMoney(selectedPerMonth)}</p>}
               </div>
             </div>
           </div>

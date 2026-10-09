@@ -212,7 +212,7 @@ export function ProfileView({ user, forecast, referrals, telegramUsername, showT
 
         {showTelegram && <TelegramCard user={user} username={telegramUsername} />}
 
-        <SecuritySettings />
+        <SecuritySettings login={user.login} />
       </div>
 
       <PayModal open={payOpen} onOpenChange={setPayOpen} initialAmount={payAmount} />
@@ -301,7 +301,7 @@ function TelegramCard({ user, username }: { user: User; username: string | null 
       bind_to_profile: '1',
       register_if_not_exists: '0',
     });
-    const popup = window.open(`/shm/v1/telegram/web/auth/start?${q}`, 'telegram-oidc-auth', 'popup=yes,width=520,height=760');
+    const popup = window.open(`/api/telegram/web/auth/start?${q}`, 'telegram-oidc-auth', 'popup=yes,width=520,height=760');
     if (!popup) return toast.error('Разрешите всплывающие окна для привязки Telegram');
     setWaiting(true);
     const started = Date.now();
